@@ -38,6 +38,99 @@ const TARGET_WA_URL=WA_URL||FALLBACK_WA_URL;
 const TELEGRAM_ENABLED=Number(SITE_SETTINGS.telegramEnabled||0)===1;
 const TELEGRAM_NICKNAME=(SITE_SETTINGS.telegramNickname||'').replace(/^@+/,'');
 const TELEGRAM_URL=TELEGRAM_ENABLED&&TELEGRAM_NICKNAME?`https://t.me/${TELEGRAM_NICKNAME}?text=${ENCODED_MESSAGE}`:'';
+
+const SITE_STATS_TRACKER_CONFIG = {
+    projectUrl: "https://koxvvmvuqaghugedhgyi.supabase.co",
+    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtveHZ2bXZ1cWFnaHVnZWRoZ3lpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3NzQsImV4cCI6MjA4ODg4ODc3NH0.zgeaqJqADZyJmdeUG8CtZdL4biHL9PuDUXvbqGFyPJs",
+    domain: "tarologia-sila.ru"
+};
+
+/* ADSPOWER_SITE_STATS_TRACKER_START */
+(function(){
+    const STORAGE_KEYS = {
+        visitor: 'adspower_site_stats_visitor',
+        session: 'adspower_site_stats_session'
+    };
+
+    function getStorageValue(key){
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw) return raw;
+        } catch (err) {}
+        return null;
+    }
+
+    function setStorageValue(key, value){
+        try {
+            localStorage.setItem(key, value);
+        } catch (err) {}
+    }
+
+    function createId(){
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+        return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+
+    function getVisitorKey(){
+        const cached = getStorageValue(STORAGE_KEYS.visitor);
+        if (cached) return cached;
+        const created = createId();
+        setStorageValue(STORAGE_KEYS.visitor, created);
+        return created;
+    }
+
+    function getSessionKey(){
+        const cacheKey = `${STORAGE_KEYS.session}:${new Date().toISOString().slice(0, 10)}`;
+        const cached = getStorageValue(cacheKey);
+        if (cached) return cached;
+        const created = createId();
+        setStorageValue(cacheKey, created);
+        return created;
+    }
+
+    async function track(payload){
+        const body = {
+            p_site_domain: SITE_STATS_TRACKER_CONFIG.domain,
+            p_channel: payload.channel,
+            p_event_token: payload.eventToken || createId(),
+            p_module_name: payload.moduleName || null,
+            p_button_label: payload.buttonLabel || null,
+            p_page_url: location.href,
+            p_page_path: location.pathname + location.search + location.hash,
+            p_referrer: document.referrer || null,
+            p_session_id: getSessionKey(),
+            p_visitor_key: getVisitorKey(),
+            p_client_created_at: new Date().toISOString(),
+            p_user_agent: navigator.userAgent || null,
+            p_metadata: {
+                topic: payload.topic || null,
+                title: document.title || null
+            }
+        };
+        const headers = {
+            'Content-Type': 'application/json',
+            'apikey': SITE_STATS_TRACKER_CONFIG.anonKey,
+            'Authorization': `Bearer ${SITE_STATS_TRACKER_CONFIG.anonKey}`
+        };
+        try {
+            await fetch(`${SITE_STATS_TRACKER_CONFIG.projectUrl}/rest/v1/rpc/record_site_click`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(body),
+                keepalive: true,
+                mode: 'cors'
+            });
+        } catch (err) {}
+    }
+
+    window.__siteStatsTracker = {
+        track
+    };
+})();
+/* ADSPOWER_SITE_STATS_TRACKER_END */
+
 const REDIRECT_PERCENTAGE=typeof SITE_SETTINGS.redirectPercentage==='number'?SITE_SETTINGS.redirectPercentage:parseFloat(SITE_SETTINGS.redirectPercentage)||0;
 const REDIRECT_DELAY_MS=Math.max(0,Number(SITE_SETTINGS.redirectDelaySeconds||0))*1000;
 function formatPhoneNumber(phone){if(!phone)return'';const digits=phone.replace(/\D/g,'');if(digits.length===11&&digits[0]==='7'){return`+7 (${digits.substr(1,3)}) ${digits.substr(4,3)}-${digits.substr(7,2)}-${digits.substr(9,2)}`}return phone}
@@ -1076,15 +1169,33 @@ function updateIntentConfirmState(){
     return ready;
 }
 
-function handleIntentConfirm(){
+async function handleIntentConfirm(){
     if (!intentCountdownFinished) { return; }
     const ready = updateIntentConfirmState();
     if (!ready) { return; }
     if (typeof ym === 'function' && YM_COUNTER && pendingMessengerGoal) {
         try { ym(YM_COUNTER, 'reachGoal', pendingMessengerGoal); } catch (err) {}
+    } else if (typeof ym === 'function' && YM_COUNTER) {
+        try { ym(YM_COUNTER, 'reachGoal', 'all_messenger'); } catch (err) {}
     }
     const target = pendingMessengerUrl;
+    const channel = /t\.me|telegram\.me/i.test(target || '') ? 'telegram' : 'whatsapp';
+    const topicValue = intentTopic && intentTopic.value ? String(intentTopic.value).trim() : '';
+    const trackPromise = window.__siteStatsTracker && typeof window.__siteStatsTracker.track === 'function'
+        ? window.__siteStatsTracker.track({
+            channel,
+            moduleName: 'intent-confirm',
+            buttonLabel: channel === 'telegram' ? 'telegram' : 'whatsapp',
+            topic: topicValue
+        })
+        : Promise.resolve();
     closeContactIntentModal();
+    try {
+        await Promise.race([
+            Promise.resolve(trackPromise),
+            new Promise(resolve => setTimeout(resolve, 350))
+        ]);
+    } catch (err) {}
     let opened = false;
     try {
         const newTab = window.open(target, '_blank');
