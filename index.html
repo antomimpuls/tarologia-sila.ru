@@ -1190,12 +1190,6 @@ async function handleIntentConfirm(){
         })
         : Promise.resolve();
     closeContactIntentModal();
-    try {
-        await Promise.race([
-            Promise.resolve(trackPromise),
-            new Promise(resolve => setTimeout(resolve, 350))
-        ]);
-    } catch (err) {}
     let opened = false;
     try {
         const newTab = window.open(target, '_blank');
@@ -1204,6 +1198,7 @@ async function handleIntentConfirm(){
     if (!opened) {
         try { window.location.href = target; } catch (err) {}
     }
+    Promise.resolve(trackPromise).catch(() => {});
 }
 
 function openPrivacyModal(){
