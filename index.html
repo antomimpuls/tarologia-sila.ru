@@ -43,8 +43,7 @@ const TELEGRAM_URL=TELEGRAM_ENABLED&&TELEGRAM_NICKNAME?`https://t.me/${TELEGRAM_
 const SITE_STATS_TRACKER_CONFIG = {
     projectUrl: "https://koxvvmvuqaghugedhgyi.supabase.co",
     anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtveHZ2bXZ1cWFnaHVnZWRoZ3lpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTI3NzQsImV4cCI6MjA4ODg4ODc3NH0.zgeaqJqADZyJmdeUG8CtZdL4biHL9PuDUXvbqGFyPJs",
-    domain: "tarologia-sila.ru",
-    relayBotUsername: 'secretar_pro_bot'
+    domain: "tarologia-sila.ru"
 };
 
 /* ADSPOWER_SITE_STATS_TRACKER_START */
@@ -252,56 +251,6 @@ const SITE_STATS_TRACKER_CONFIG = {
         track
     };
     window.__METRIKA_MESSENGER_VISIBLE__ = METRIKA_MESSENGER_VISIBLE;
-
-    // ===== Telegram-relay redirect =====
-    // Все клики по Telegram-ссылкам (t.me / telegram.me) перехватываем и
-    // подменяем на нашего бота-секретаря с уникальным click_id в payload.
-    // Бот сам встретит пользователя, отправит шаблон и пересылает диалог админу.
-    function redirectTelegramLink(link, evt){
-        if (!link) return false;
-        if (link.getAttribute('data-conv-rerouted') === '1') return false;
-        const href = link.getAttribute('href') || '';
-        if (!/^https?:\/\/(www\.)?(t|telegram)\.me\//i.test(href)) return false;
-        if (/secretar_pro_bot/i.test(href)) return false; // уже наш бот
-        try { evt.preventDefault(); } catch (err) {}
-        try { evt.stopPropagation(); } catch (err) {}
-        link.setAttribute('data-conv-rerouted', '1');
-        const eventToken = createId();
-        const startPayload = SITE_STATS_TRACKER_CONFIG.domain + '__' + eventToken;
-        const newUrl = 'https://t.me/' + SITE_STATS_TRACKER_CONFIG.relayBotUsername + '?start=' + encodeURIComponent(startPayload);
-        // Регистрируем клик в нашей статистике с тем же event_token что в payload
-        try {
-            track({
-                channel: 'telegram',
-                eventToken: eventToken,
-                moduleName: 'relay-redirect',
-                buttonLabel: 'telegram-bot'
-            });
-        } catch (err) {}
-        // Открываем нашего бота с небольшой задержкой, чтобы track() успел отправиться
-        setTimeout(function(){
-            try {
-                const newTab = window.open(newUrl, '_blank', 'noopener');
-                if (!newTab) { window.location.href = newUrl; }
-            } catch (err) {
-                try { window.location.href = newUrl; } catch (err2) {}
-            }
-            // Сбрасываем маркер чтобы повторный клик тоже сработал
-            setTimeout(function(){ link.removeAttribute('data-conv-rerouted'); }, 800);
-        }, 60);
-        return true;
-    }
-
-    // Capture-phase click handler — перехватывает до bubbling/handleIntentConfirm
-    document.addEventListener('click', function(evt){
-        const link = evt.target && evt.target.closest ? evt.target.closest('a') : null;
-        if (!link) return;
-        redirectTelegramLink(link, evt);
-    }, true);
-
-    // Также перехватываем когда href подставляется в intentConfirmBtn
-    // (на сайте есть setIntentConfirmState({href}) — после неё кнопка имеет href t.me/...)
-    // Это ловится тем же делегированным click handler-ом выше.
 })();
 /* ADSPOWER_SITE_STATS_TRACKER_END */
 
